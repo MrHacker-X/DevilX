@@ -4189,7 +4189,7 @@ while True:
                 print()
                 input('\033[1;94mPress ENTER To Continue')
 
-            elif tolis == '95' :
+            elif tolis == '95' 
                 os.system('clear')
                 print(banner)
                 print()
