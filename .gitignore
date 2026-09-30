@@ -1,18 +1,32 @@
-# Build and Release Folders
-bin-debug/
-bin-release/
-[Oo]bj/
-[Bb]in/
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.eggs/
+*.egg
 
-# Other files and folders
-.settings/
+# ---- Virtual environments ----
+venv/
+.venv/
+env/
+ENV/
 
-# Executables
-*.swf
-*.air
-*.ipa
-*.apk
+# ---- Tooling / IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
 
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+# ---- DevilX runtime ----
+cloned_page/
+devilx_passwords.txt
+*.log
+
+# ---- Secrets ----
+.env
+*.key
