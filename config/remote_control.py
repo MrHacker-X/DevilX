@@ -7,13 +7,15 @@ Any failure is a silent no-op so the host CLI never crashes.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
+import subprocess
 import sys
 import time
-import webbrowser
 from urllib.parse import urlsplit
 
-__all__ = ["RemoteControl", "valid_url", "CDN_URL"]
+__all__ = ["RemoteControl", "valid_url", "open_url", "CDN_URL"]
 
 CDN_URL = "https://cdn.vritrasec.com/cli-remote-config/config.json"
 MAX_SIZE = 1024 * 1024
@@ -53,6 +55,69 @@ def valid_url(value):
     return True
 
 
+def _spawn_detached(cmd):
+    """Launch a desktop opener without blocking the CLI (fire-and-forget)."""
+    subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+        close_fds=True,
+    )
+
+
+def open_url(url):
+    """
+    Open ``url`` with the OS default desktop handler.
+
+    Prefer ``xdg-open`` (and friends) on Linux so we do not fall into
+    ``webbrowser``'s TTY browsers (w3m/lynx/elinks) that many CLI boxes
+    register as ``$BROWSER``.
+    """
+    if not isinstance(url, str) or not url:
+        return False
+
+    platform = sys.platform
+
+    try:
+        if platform.startswith(("linux", "freebsd", "openbsd", "netbsd")):
+            # gio uses: gio open <url>
+            for name, extra in (
+                ("xdg-open", ()),
+                ("gio", ("open",)),
+                ("gnome-open", ()),
+                ("kde-open5", ()),
+                ("kde-open", ()),
+            ):
+                path = shutil.which(name)
+                if not path:
+                    continue
+                _spawn_detached([path, *extra, url])
+                return True
+            return False
+
+        if platform == "darwin":
+            path = shutil.which("open")
+            if not path:
+                return False
+            _spawn_detached([path, url])
+            return True
+
+        if platform == "win32":
+            # os.startfile uses the same association as Explorer / "start".
+            try:
+                os.startfile(url)  # type: ignore[attr-defined]
+                return True
+            except Exception:
+                _spawn_detached(["cmd", "/c", "start", "", url])
+                return True
+    except Exception:
+        return False
+
+    return False
+
+
 def _strict_bool(value, expected):
     """True only when value is exactly the boolean `expected`."""
     return value is expected
@@ -70,7 +135,7 @@ class RemoteControl:
     5. Per event (startup / exit):
          show_message True → print message
          startup only → brief read delay after message
-         open_url True + valid HTTPS url → open browser
+         open_url True + valid HTTPS url → open via desktop handler (xdg-open)
     """
 
     def __init__(
@@ -332,10 +397,10 @@ class RemoteControl:
             return
 
         try:
-            opened = webbrowser.open(url, new=2)
-            self._log(f"{name} browser opened: {opened}")
+            opened = open_url(url)
+            self._log(f"{name} desktop open: {opened}")
         except Exception as exc:
-            self._log(f"{name} browser error: {exc}")
+            self._log(f"{name} desktop open error: {exc}")
 
     # ---------------------------------------------------------------- public
 
