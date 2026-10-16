@@ -1,16 +1,8 @@
-"""
-remote_control — fail-safe remote alert module for CLI tools.
-
-Fetches public CDN config and applies startup/exit actions.
-Any failure is a silent no-op so the host CLI never crashes.
-"""
-
 from __future__ import annotations
 
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 from urllib.parse import urlsplit
@@ -28,7 +20,6 @@ URL_PATTERN = re.compile(r"^https://[^\s<>'\"\\]+$", re.IGNORECASE)
 
 
 def valid_url(value):
-    """Return True only for a clean, credential-free HTTPS URL."""
     if not isinstance(value, str) or not value:
         return False
 
@@ -55,89 +46,41 @@ def valid_url(value):
     return True
 
 
-def _spawn_detached(cmd):
-    """Launch a desktop opener without blocking the CLI (fire-and-forget)."""
-    subprocess.Popen(
-        cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        start_new_session=True,
-        close_fds=True,
-    )
-
-
 def open_url(url):
-    """
-    Open ``url`` with the OS default desktop handler.
-
-    Prefer ``xdg-open`` (and friends) on Linux so we do not fall into
-    ``webbrowser``'s TTY browsers (w3m/lynx/elinks) that many CLI boxes
-    register as ``$BROWSER``.
-    """
     if not isinstance(url, str) or not url:
         return False
-
-    platform = sys.platform
-
     try:
-        if platform.startswith(("linux", "freebsd", "openbsd", "netbsd")):
-            # gio uses: gio open <url>
-            for name, extra in (
-                ("xdg-open", ()),
-                ("gio", ("open",)),
-                ("gnome-open", ()),
-                ("kde-open5", ()),
-                ("kde-open", ()),
-            ):
-                path = shutil.which(name)
-                if not path:
-                    continue
-                _spawn_detached([path, *extra, url])
+        plat = sys.platform
+
+        if plat.startswith("win"):
+            os.startfile(url)  # type: ignore[attr-defined]
+            return True
+
+        import shlex
+
+        quoted = shlex.quote(url)
+
+        if plat == "darwin":
+            if shutil.which("open"):
+                os.system(f"open {quoted}")
                 return True
             return False
 
-        if platform == "darwin":
-            path = shutil.which("open")
-            if not path:
-                return False
-            _spawn_detached([path, url])
-            return True
-
-        if platform == "win32":
-            # os.startfile uses the same association as Explorer / "start".
-            try:
-                os.startfile(url)  # type: ignore[attr-defined]
+        # Linux desktop + Termux / other Unix
+        for cmd in ("xdg-open", "termux-open-url", "termux-open"):
+            if shutil.which(cmd):
+                os.system(f"{cmd} {quoted}")
                 return True
-            except Exception:
-                _spawn_detached(["cmd", "/c", "start", "", url])
-                return True
+        return False
     except Exception:
         return False
 
-    return False
-
 
 def _strict_bool(value, expected):
-    """True only when value is exactly the boolean `expected`."""
     return value is expected
 
 
 class RemoteControl:
-    """
-    Workflow
-    --------
-    1. Interactive mode only (no inline flags / -v / -h style usage).
-    2. Fetch CDN JSON once.
-    3. master_enable must be True — otherwise do nothing.
-    4. If global.enable is True  → use global rules (ignore all tools).
-       If global.enable is False → use tools[tool_id] when that tool is enabled.
-    5. Per event (startup / exit):
-         show_message True → print message
-         startup only → brief read delay after message
-         open_url True + valid HTTPS url → open via desktop handler (xdg-open)
-    """
-
     def __init__(
         self,
         tool_id,
@@ -208,7 +151,6 @@ class RemoteControl:
     # ------------------------------------------------------------------ load
 
     def _load(self):
-        """Fetch + resolve rules once. Never raises."""
         if self._loaded:
             return
 
@@ -277,7 +219,6 @@ class RemoteControl:
         self._log(f"Using TOOL rules: {self.tool_id}")
 
     def _fetch_config(self):
-        """GET CDN JSON. Returns dict or None. Never raises."""
         try:
             import requests
         except ImportError as exc:
@@ -339,7 +280,6 @@ class RemoteControl:
     # ---------------------------------------------------------------- events
 
     def _event(self, name):
-        """Apply one startup/exit event. Never raises."""
         try:
             self._event_unsafe(name)
         except Exception as exc:

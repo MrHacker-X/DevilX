@@ -39,7 +39,7 @@ try:
 except ImportError:
     Fore = Style = colorama_init = None
 
-__version__ = "2.2"
+__version__ = "2.3"
 
 # ============================================================
 #  Appearance - muted house palette
